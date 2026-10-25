@@ -4,6 +4,14 @@ Open **Actions → Contributor checks → Run workflow**. Leave the workflow bra
 as `main`, set **check_ref** to a branch or immutable commit in this fork, and
 choose a mode:
 
+- `research-package`: runs one package's registered, bounded commands on Linux
+  and Windows. Set **package** to its repository-relative directory and
+  **check_ref** to the feature branch or commit. For the three-axis proof use
+  `research/three-axis-sharp-cutoff` on `research-three-axis-kernel`. Only
+  declared live inputs are materialized. Two commits of Git history cover this
+  package's direct-main-parent pins; packages with older provenance may need
+  more history and should fail rather than skip authentication.
+
 - `sparse-tests`: runs the sparse-checkout regression tests on Linux and Windows,
   with ordinary and optimized Python 3.12. Start here for the setup repair on
   `fix-sparse-root-materialization`.

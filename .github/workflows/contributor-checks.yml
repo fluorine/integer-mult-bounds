@@ -9,18 +9,66 @@ on:
         default: fix-sparse-root-materialization
         type: string
       mode:
-        description: Check scope (neither mode proves the multiplication theorem)
+        description: Check scope (no mode proves the multiplication theorem)
         required: true
         default: sparse-tests
         type: choice
         options:
           - sparse-tests
           - selected-metadata
+          - research-package
+      package:
+        description: Repository-relative package directory for research-package mode
+        required: true
+        default: research/three-axis-sharp-cutoff
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  research-package:
+    if: inputs.mode == 'research-package'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      RESEARCH_PACKAGE: ${{ inputs.package }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.check_ref }}
+          fetch-depth: 2
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /${{ inputs.package }}/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Materialize declared live inputs
+        shell: python
+        run: |
+          import json, os, pathlib, subprocess
+          package = pathlib.Path(os.environ['RESEARCH_PACKAGE'])
+          manifest = json.loads((package / 'VERIFY.json').read_text(encoding='utf-8'))
+          names = manifest.get('inputs', [])
+          if any(not isinstance(n, str) or n.startswith('/') or '..' in n.split('/') for n in names):
+              raise ValueError('Noncanonical declared input')
+          if names:
+              patterns = ['/' + ''.join('\\' + c if c in '\\*?[] ' else c for c in n) for n in names]
+              subprocess.run(['git', 'sparse-checkout', 'add', '--stdin'],
+                             input='\n'.join(patterns) + '\n', text=True, check=True)
+      - name: Registered exact package replay
+        shell: python
+        run: |
+          import os, subprocess, sys
+          subprocess.run([sys.executable, '-B', 'scripts/research_package.py',
+                          '--package', os.environ['RESEARCH_PACKAGE']], check=True)
   sparse-tests:
     if: inputs.mode == 'sparse-tests'
     strategy:
