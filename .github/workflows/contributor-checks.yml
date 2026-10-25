@@ -1,0 +1,76 @@
+name: Contributor checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      check_ref:
+        description: Branch or commit in this fork to check
+        required: true
+        default: fix-sparse-root-materialization
+        type: string
+      mode:
+        description: Check scope (neither mode proves the multiplication theorem)
+        required: true
+        default: sparse-tests
+        type: choice
+        options:
+          - sparse-tests
+          - selected-metadata
+
+permissions:
+  contents: read
+
+jobs:
+  sparse-tests:
+    if: inputs.mode == 'sparse-tests'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.check_ref }}
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /tests/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Sparse baseline regression tests
+        run: python -B -m unittest discover -s tests -p "test_research_baseline_sparse*.py"
+      - name: Optimized Python regression tests
+        run: python -O -B -m unittest discover -s tests -p "test_research_baseline_sparse*.py"
+
+  selected-metadata:
+    if: inputs.mode == 'selected-metadata'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.check_ref }}
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /certificates/selected-result.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Materialize only declared selected inputs
+        shell: python
+        run: |
+          import json, subprocess, sys
+          sys.path.insert(0, 'scripts')
+          import research_baseline_sparse as sparse
+          record = json.load(open('certificates/selected-result.json'))
+          names = sparse.selected_inputs(record)
+          patterns = ['/' + ''.join('\\' + c if c in '\\*?[] ' else c for c in n) for n in names]
+          subprocess.run(['git', 'sparse-checkout', 'add', '--stdin'],
+                         input='\n'.join(patterns) + '\n', text=True, check=True)
+          print('Declared input count:', len(names))
+      - name: Source and metadata bindings only
+        run: python -B scripts/research_selected_baseline.py
